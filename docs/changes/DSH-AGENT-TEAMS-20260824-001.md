@@ -36,6 +36,8 @@ AgentTeams 原先只有 Cordis entry 配置，没有供 Manager 使用的参数�
 
 第一次通过 Maintenance 从干净 Git checkout 打包时，registry 未登记构建命令；由于 `lib/` 是生成物且不提交 Git，得到的 tgz 缺少 `lib/index.js`，冷启动报 `ERR_MODULE_NOT_FOUND`。修复方式是在 Maintenance registry 为本插件固定 `pnpm build && pnpm verify` 配方，再从同一提交重新构建内容寻址 artifact。以后不能把开发工作树中残留的 `lib/` 当成发布成功证据。
 
+干净 checkout 的第一次完整验证还复现了 Windows 目录锁测试的调度抖动：测试进程标称持锁约 140 ms，而旧目录重命名窗口只有约 150 ms，偶尔在最后一次尝试后才释放。归档目录的有界重试窗口扩到约 400 ms；单文件原子替换的次数和直接写入降级策略保持不变。
+
 ## 回退
 
 回退本提交并重新安装 0.1.13。DSH profile 中新增的两个 Settings namespace 可以保留；旧版本不会消费它们，也不会影响原 `memberModel` 配置。

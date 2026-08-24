@@ -1577,7 +1577,7 @@ try {
       // Archive moves the whole team directory with `rename(source, target)`.
       // The same Windows delete-sharing EPERM applies when a file below the
       // directory is momentarily locked, so it retries the rename. A short
-      // (≈150 ms) lock falls inside the retry window and must not abort the
+      // (≈150 ms) lock falls inside the bounded directory retry window and must not abort the
       // archive.
       const { archiveTeamDir } = await import('../lib/state.js')
       const transientTeam = {
@@ -1621,7 +1621,7 @@ try {
       })
       try {
         // The flasher releases after ~140 ms; archiveTeamDir retries the
-        // rename across that window, so archiving must still succeed.
+        // rename across that window even under scheduler jitter, so archiving must still succeed.
         await archiveTeamDir(atomicStateRoot, transientTeam.id)
         const archived = await readFile(join(atomicStateRoot, 'archive', transientTeam.id, 'team.json'), 'utf8')
         check(
