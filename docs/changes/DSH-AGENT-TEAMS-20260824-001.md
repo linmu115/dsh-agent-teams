@@ -32,6 +32,10 @@ AgentTeams 原先只有 Cordis entry 配置，没有供 Manager 使用的参数�
 - `dsh-management/panel.yaml`：Manager 参数页声明；
 - `scripts/verify.mjs`：显式参数、固定默认、旧值和跟随队长的优先级验证。
 
+## 发布排错
+
+第一次通过 Maintenance 从干净 Git checkout 打包时，registry 未登记构建命令；由于 `lib/` 是生成物且不提交 Git，得到的 tgz 缺少 `lib/index.js`，冷启动报 `ERR_MODULE_NOT_FOUND`。修复方式是在 Maintenance registry 为本插件固定 `pnpm build && pnpm verify` 配方，再从同一提交重新构建内容寻址 artifact。以后不能把开发工作树中残留的 `lib/` 当成发布成功证据。
+
 ## 回退
 
 回退本提交并重新安装 0.1.13。DSH profile 中新增的两个 Settings namespace 可以保留；旧版本不会消费它们，也不会影响原 `memberModel` 配置。
