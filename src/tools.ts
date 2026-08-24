@@ -59,6 +59,12 @@ export interface ToolsConfig {
   memberProvider: string
   /** Optional member model override. */
   memberModel?: string
+  /** Optional fixed member route from the live DSH Settings namespace. */
+  memberDefaultRoute?: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  } | null
   /** Member delegation depth cap. */
   memberMaxDepth?: number
   /** Team size cap (members). */
@@ -296,7 +302,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): void
       name: { type: 'string', required: true, description: 'Unique member name inside the team.' },
       role: { type: 'string', description: 'Role of the member (e.g. researcher, engineer, reviewer).' },
       provider: { type: 'string', description: 'Optional LLM provider route. Use only when the user explicitly requests a different provider; requires model.' },
-      model: { type: 'string', description: 'Optional model override. Omit for the captain\'s current model (or the configured memberModel default).' },
+      model: { type: 'string', description: 'Optional model override. Omit for the configured member route, legacy memberModel, or captain current model.' },
       reasoning_effort: { type: 'string', description: 'Optional reasoning effort override: one of the target model\'s supported effort ids, or "default" to force its default. When omitted, the captain\'s effort is inherited only for the same provider/model; a changed route uses the target default.' },
     },
     output: {
@@ -339,6 +345,7 @@ export function registerAgentTeamsTools(ctx: Context, config: ToolsConfig): void
         const selection = await resolveMemberLlmSelection(ctx, captain, {
           provider: args.provider,
           model: args.model,
+          defaultSelection: config.memberDefaultRoute,
           defaultModel: config.memberModel,
           reasoningEffort: args.reasoning_effort,
         }, exec.signal)
