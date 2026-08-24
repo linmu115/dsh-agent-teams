@@ -130,7 +130,9 @@ Defaults work without extra setup. A trusted profile can override member behavio
     maxMembers: 8
 ```
 
-`memberProvider` is the sub-agent runtime backend (`spawn` / `fork`), not an LLM provider. Cross-LLM-provider routing uses the optional `provider` + `model` fields of `agent_teams_add_member`; `memberModel` is only a model default for all members. A member on the captain's current provider/model inherits the captain's reasoning effort, while a changed provider or model automatically uses the target model's default. To request a particular effort, pass the optional `reasoning_effort` field — one of the target model's supported effort ids, or `"default"` to force the model's own default.
+When `dsh-resource-management` is installed, open **Plugin Management → AgentTeams → Parameters** to edit the same runtime settings through the official DSH Settings service. The model field is populated from the current DSH model directory rather than a free-form text box. Live settings affect newly created members immediately; startup and storage settings are marked as restart-required. `promptSectionOrder` is kept in the collapsed Developer Options section because it only controls where this plugin's policy text is inserted into the system prompt.
+
+`memberProvider` is the sub-agent runtime backend (`spawn` / `fork`), not an LLM provider. Cross-LLM-provider routing uses the optional `provider` + `model` fields of `agent_teams_add_member`. The Manager's `memberDefaultRoute` setting takes priority over the legacy `memberModel`; explicit `agent_teams_add_member` arguments still take priority over both. A member on the captain's current provider/model inherits the captain's reasoning effort, while a changed provider or model automatically uses the target model's default. To request a particular effort, pass the optional `reasoning_effort` field — one of the target model's supported effort ids, or `"default"` to force the model's own default.
 
 `slashCommand: false` disables the deterministic `/agent-teams` activation surfaces (slash command and gesture boundary), leaving the natural-language trigger as the only entry point.
 

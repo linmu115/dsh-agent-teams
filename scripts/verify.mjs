@@ -75,6 +75,7 @@ import {
   zh as agentTeamsZh,
 } from '../lib/client/locales.js'
 import { openAgentTeamMember } from '../lib/client/session-navigation.js'
+import { installAgentTeamsSettings } from '../lib/index.js'
 import { steerCaptainReport } from '../lib/tools.js'
 import { parseProfileInvocation, resolveTeamProfile, formatProfilesForPrompt } from '../lib/profiles.js'
 import { memberPersona, memberWelcome } from '../lib/members.js'
@@ -1133,6 +1134,42 @@ check(
     && defaultedSelection.reasoningEffort === 'medium'
     && resolvedCalls.at(-1)?.reasoningEffort === undefined,
 )
+const configuredRouteSelection = await resolveMemberLlmSelection(selectionContext, captain, {
+  defaultSelection: {
+    provider: 'other-provider',
+    model: 'other-model',
+    reasoningEffort: 'high',
+  },
+  defaultModel: 'configured-member-model',
+})
+check(
+  'DSH Settings fixed route takes priority over legacy memberModel',
+  configuredRouteSelection.provider === 'other-provider'
+    && configuredRouteSelection.model === 'other-model'
+    && configuredRouteSelection.reasoningEffort === 'high',
+)
+const explicitOverConfiguredSelection = await resolveMemberLlmSelection(selectionContext, captain, {
+  provider: 'captain-provider',
+  model: 'captain-model',
+  reasoningEffort: 'max',
+  defaultSelection: { provider: 'other-provider', model: 'other-model' },
+})
+check(
+  'add_member explicit route takes priority over DSH Settings fixed route',
+  explicitOverConfiguredSelection.provider === 'captain-provider'
+    && explicitOverConfiguredSelection.model === 'captain-model'
+    && explicitOverConfiguredSelection.reasoningEffort === 'max',
+)
+const explicitFollowSelection = await resolveMemberLlmSelection(selectionContext, captain, {
+  defaultSelection: null,
+  defaultModel: 'configured-member-model',
+})
+check(
+  'explicit follow-captain setting suppresses legacy memberModel',
+  explicitFollowSelection.provider === 'captain-provider'
+    && explicitFollowSelection.model === 'captain-model'
+    && explicitFollowSelection.reasoningEffort === 'max',
+)
 const explicitEffortSelection = await resolveMemberLlmSelection(selectionContext, captain, {
   provider: 'other-provider',
   model: 'other-model',
@@ -1194,6 +1231,53 @@ try {
   unknownCatalogModelRejected = /unknown member model.*typo-model/i.test(String(error?.message ?? error))
 }
 check('approval model preflight rejects an unlisted typo before spawn', unknownCatalogModelRejected)
+
+const registeredSettings = []
+const liveSettingsValue = {
+  memberProvider: 'fork',
+  memberDefaultRoute: { provider: 'other-provider', model: 'other-model' },
+  memberMaxDepth: 2,
+  maxMembers: 5,
+}
+const startupSettingsValue = {
+  stateDir: '.agent-teams-custom',
+  slashCommand: false,
+  promptSectionOrder: 130,
+}
+const settingsSources = installAgentTeamsSettings({
+  inject: (_dependencies, callback) => callback({
+    settings: {
+      register: (namespace, _schema, options) => {
+        const ns = String(namespace)
+        registeredSettings.push({ ns, options })
+        return { get: () => ns === 'agent-teams' ? liveSettingsValue : startupSettingsValue }
+      },
+    },
+    effect: () => undefined,
+  }),
+}, {})
+check(
+  'official DSH Settings bridge registers live and restart namespaces',
+  registeredSettings.some(entry => entry.ns === 'agent-teams' && entry.options.applies === 'live')
+    && registeredSettings.some(entry => entry.ns === 'agent-teams-startup' && entry.options.applies === 'restart'),
+)
+let emptyConfiguredRouteRejected = false
+try {
+  registeredSettings.find(entry => entry.ns === 'agent-teams')?.options.validate?.({
+    memberProvider: 'spawn',
+    memberDefaultRoute: { provider: '', model: 'other-model' },
+  })
+} catch {
+  emptyConfiguredRouteRejected = true
+}
+check('settings bridge rejects an empty fixed model route', emptyConfiguredRouteRejected)
+check(
+  'settings sources expose the registered live value and startup snapshot',
+  settingsSources.live().memberProvider === 'fork'
+    && settingsSources.live().maxMembers === 5
+    && settingsSources.startup().stateDir === '.agent-teams-custom'
+    && settingsSources.startup().slashCommand === false,
+)
 
 let startSpec
 const spawnMemberRecord = {

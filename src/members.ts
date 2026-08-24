@@ -78,6 +78,12 @@ export interface MemberLlmSelectionRequest {
   model?: string
   /** Plugin-level member model default. */
   defaultModel?: string
+  /** Plugin-level fixed route selected through DSH Settings. */
+  defaultSelection?: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  } | null
   /** Explicit reasoning effort; "default" selects the target model's default effort. */
   reasoningEffort?: string
   /** Configured fallback route. */
@@ -209,6 +215,9 @@ export async function resolveMemberLlmSelection(
   const explicitProvider = request.provider?.trim()
   const explicitModel = request.model?.trim()
   const defaultModel = request.defaultModel?.trim()
+  const defaultProvider = request.defaultSelection?.provider.trim()
+  const configuredModel = request.defaultSelection?.model.trim()
+  const configuredEffort = request.defaultSelection?.reasoningEffort?.trim()
   const explicitEffort = request.reasoningEffort?.trim()
   const fallback = request.fallback
   if (request.provider !== undefined && explicitProvider === '') {
@@ -220,6 +229,13 @@ export async function resolveMemberLlmSelection(
   if (request.defaultModel !== undefined && defaultModel === '') {
     throw new Error('configured memberModel must not be empty')
   }
+  if (request.defaultSelection !== undefined && request.defaultSelection !== null) {
+    if (defaultProvider === '') throw new Error('configured member default provider must not be empty')
+    if (configuredModel === '') throw new Error('configured member default model must not be empty')
+    if (request.defaultSelection.reasoningEffort !== undefined && configuredEffort === '') {
+      throw new Error('configured member default reasoning effort must not be empty')
+    }
+  }
   if (request.reasoningEffort !== undefined && explicitEffort === '') {
     throw new Error('member reasoning effort must not be empty')
   }
@@ -230,8 +246,13 @@ export async function resolveMemberLlmSelection(
   const current = captain.session.requestHeader()?.config
   const currentProvider = current?.provider ?? captain.options.provider
   const currentModel = current?.model ?? captain.options.model
-  const provider = explicitProvider ?? currentProvider
-  const model = explicitModel ?? defaultModel ?? currentModel
+  const explicitRoute = explicitModel !== undefined
+  const configuredPreference = !explicitRoute && request.defaultSelection !== undefined
+  const configuredRoute = configuredPreference && request.defaultSelection !== null
+  const provider = explicitProvider
+    ?? (explicitRoute ? currentProvider : configuredRoute ? defaultProvider : currentProvider)
+  const model = explicitModel
+    ?? (configuredRoute ? configuredModel : configuredPreference ? currentModel : defaultModel ?? currentModel)
   if (provider === undefined || model === undefined) {
     throw new Error('cannot resolve the member LLM route from the current captain session')
   }
@@ -242,9 +263,11 @@ export async function resolveMemberLlmSelection(
   // target-default behavior even when the route did not change.
   const sameRoute = provider === currentProvider && model === currentModel
   const reasoningEffort = explicitEffort === undefined
-    ? sameRoute
-      ? current?.reasoningEffort
-      : undefined
+    ? configuredRoute
+      ? configuredEffort === 'default' ? undefined : configuredEffort
+      : sameRoute
+        ? current?.reasoningEffort
+        : undefined
     : explicitEffort === 'default'
       ? undefined
       : ReasoningEffortId(explicitEffort)
@@ -253,7 +276,7 @@ export async function resolveMemberLlmSelection(
     model,
     ...reasoningEffort === undefined
       ? {}
-      : { reasoningEffort },
+      : { reasoningEffort: ReasoningEffortId(reasoningEffort) },
   }, signal)
   return {
     provider: resolved.provider,
