@@ -112,7 +112,9 @@ dsh web
     maxMembers: 8
 ```
 
-这里的 `memberProvider` 指子 Agent 的运行后端（`spawn` / `fork`），不是 LLM provider。跨 LLM provider 由 `agent_teams_add_member` 的可选 `provider` + `model` 参数表达；`memberModel` 只是所有成员的模型默认覆盖。成员沿用队长当前 provider/model 时会继承队长的思考强度；provider 或 model 任一改变时会自动使用目标模型的默认档。需要指定特定强度时，可传入可选的 `reasoning_effort` 参数（目标模型支持的档位 id，或 `"default"` 表示强制使用模型自身默认档）。
+安装 `dsh-resource-management` 后，可以打开 **插件管理 → AgentTeams → 参数设置**，通过 DSH 官方 Settings 服务修改同一组真实运行配置。成员模型来自当前 DSH 模型目录，不再使用自由文本框。成员运行设置保存后会影响之后新建的成员；启动与存储设置会明确提示需要重启。`promptSectionOrder` 收在默认折叠的“开发者选项”中，因为它只控制本插件说明在系统提示里的插入位置。
+
+这里的 `memberProvider` 指子 Agent 的运行后端（`spawn` / `fork`），不是 LLM provider。跨 LLM provider 由 `agent_teams_add_member` 的可选 `provider` + `model` 参数表达。Manager 的 `memberDefaultRoute` 优先于旧 Cordis 配置里的 `memberModel`，而单次 `agent_teams_add_member` 显式参数仍然拥有最高优先级。成员沿用队长当前 provider/model 时会继承队长的思考强度；provider 或 model 任一改变时会自动使用目标模型的默认档。需要指定特定强度时，可传入可选的 `reasoning_effort` 参数（目标模型支持的档位 id，或 `"default"` 表示强制使用模型自身默认档）。
 
 `slashCommand: false` 可关闭确定性的 `/agent-teams` 激活面（slash 命令与手势边界），仅保留自然语言触发。
 

@@ -21,6 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Declaration merge only: makes ctx.llm, ctx.subagents and ctx.systemPrompt visible.
 import type {} from '@deepseek-ai/dsh-llm'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
@@ -66,6 +67,12 @@ export interface Config {
   memberProvider?: string
   /** Optional model override applied to every member. */
   memberModel?: string
+  /** Fixed default member route; null means follow the captain and overrides legacy memberModel. */
+  memberDefaultRoute?: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  } | null
   /** Member delegation depth cap (default `1`; `0` forbids delegation entirely). */
   memberMaxDepth?: number
   /** Team size cap in members (default `8`). */
@@ -84,11 +91,121 @@ export const Config: z<Config> = z.object({
   stateDir: z.string().default('.agent-teams'),
   memberProvider: z.string().default('spawn'),
   memberModel: z.string(),
+  memberDefaultRoute: z.union([
+    z.const(null),
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      reasoningEffort: z.string(),
+    }),
+  ]),
   memberMaxDepth: z.natural().default(1),
   maxMembers: z.natural().min(1).default(8),
   promptSectionOrder: z.natural().default(117),
   slashCommand: z.boolean().default(true),
 })
+
+/** Live settings consumed for each new member and admission check. */
+export interface AgentTeamsLiveSettings {
+  memberProvider?: string
+  memberDefaultRoute?: Config['memberDefaultRoute']
+  memberMaxDepth?: number
+  maxMembers?: number
+}
+
+/** Startup settings whose changes are persisted now and applied after restart. */
+export interface AgentTeamsStartupSettings {
+  stateDir?: string
+  slashCommand?: boolean
+  promptSectionOrder?: number
+}
+
+export const AgentTeamsLiveSettings: z<AgentTeamsLiveSettings> = z.object({
+  memberProvider: z.string().default('spawn'),
+  memberDefaultRoute: z.union([
+    z.const(null),
+    z.object({
+      provider: z.string(),
+      model: z.string(),
+      reasoningEffort: z.string(),
+    }),
+  ]),
+  memberMaxDepth: z.natural().default(1),
+  maxMembers: z.natural().min(1).default(8),
+})
+
+export const AgentTeamsStartupSettings: z<AgentTeamsStartupSettings> = z.object({
+  stateDir: z.string().default('.agent-teams'),
+  slashCommand: z.boolean().default(true),
+  promptSectionOrder: z.natural().default(117),
+})
+
+function validateLiveSettings(value: AgentTeamsLiveSettings): void {
+  if (value.memberProvider !== undefined && value.memberProvider.trim() === '') {
+    throw new Error('memberProvider must not be empty')
+  }
+  const route = value.memberDefaultRoute
+  if (route !== undefined && route !== null) {
+    if (route.provider.trim() === '') throw new Error('memberDefaultRoute.provider must not be empty')
+    if (route.model.trim() === '') throw new Error('memberDefaultRoute.model must not be empty')
+    if (route.reasoningEffort !== undefined && route.reasoningEffort.trim() === '') {
+      throw new Error('memberDefaultRoute.reasoningEffort must not be empty')
+    }
+  }
+}
+
+function validateStartupSettings(value: AgentTeamsStartupSettings): void {
+  if (value.stateDir !== undefined && value.stateDir.trim() === '') {
+    throw new Error('stateDir must not be empty')
+  }
+}
+
+interface SettingsSources {
+  live: () => AgentTeamsLiveSettings
+  startup: () => AgentTeamsStartupSettings
+}
+
+/** Register the two official DSH Settings namespaces and expose their active sources. */
+export function installAgentTeamsSettings(ctx: Context, config: Config): SettingsSources {
+  const liveBase: AgentTeamsLiveSettings = {
+    memberProvider: config.memberProvider ?? 'spawn',
+    ...(config.memberDefaultRoute === undefined ? {} : { memberDefaultRoute: config.memberDefaultRoute }),
+    memberMaxDepth: config.memberMaxDepth ?? 1,
+    maxMembers: config.maxMembers ?? 8,
+  }
+  const startupBase: AgentTeamsStartupSettings = {
+    stateDir: config.stateDir ?? '.agent-teams',
+    slashCommand: config.slashCommand ?? true,
+    promptSectionOrder: config.promptSectionOrder ?? 117,
+  }
+  let live = (): AgentTeamsLiveSettings => liveBase
+  let startup = (): AgentTeamsStartupSettings => startupBase
+
+  ctx.inject(['settings'], (settingsCtx) => {
+    const liveScope = settingsCtx.settings.register(
+      settingsNamespace('agent-teams'),
+      AgentTeamsLiveSettings,
+      { base: liveBase, applies: 'live', validate: validateLiveSettings },
+    )
+    const startupScope = settingsCtx.settings.register(
+      settingsNamespace('agent-teams-startup'),
+      AgentTeamsStartupSettings,
+      { base: startupBase, applies: 'restart', validate: validateStartupSettings },
+    )
+    live = () => liveScope.get()
+    const startupSnapshot = startupScope.get()
+    startup = () => startupSnapshot
+    settingsCtx.effect(() => () => {
+      live = () => liveBase
+      startup = () => startupBase
+    })
+  })
+
+  return {
+    live: () => live(),
+    startup: () => startup(),
+  }
+}
 
 /** The model-facing usage policy: when and how to drive AgentTeams. */
 function usageSectionText(toolNames: string): string {
@@ -105,12 +222,15 @@ Tools: ${toolNames}`
 }
 
 export function apply(ctx: Context, config: Config): void {
+  const sources = installAgentTeamsSettings(ctx, config)
+  const startup = sources.startup()
   const resolved: ToolsConfig = {
-    stateDir: config.stateDir ?? '.agent-teams',
-    memberProvider: config.memberProvider ?? 'spawn',
+    stateDir: startup.stateDir ?? '.agent-teams',
+    get memberProvider() { return sources.live().memberProvider ?? 'spawn' },
     memberModel: config.memberModel,
-    memberMaxDepth: config.memberMaxDepth ?? 1,
-    maxMembers: config.maxMembers ?? 8,
+    get memberDefaultRoute() { return sources.live().memberDefaultRoute },
+    get memberMaxDepth() { return sources.live().memberMaxDepth ?? 1 },
+    get maxMembers() { return sources.live().maxMembers ?? 8 },
   }
 
   // Provider registration is a sibling plugin's effect (`subagent-spawn` /
@@ -133,7 +253,7 @@ export function apply(ctx: Context, config: Config): void {
   ].join(', ')
   ctx.systemPrompt.section({
     name: 'agent-teams:usage',
-    order: config.promptSectionOrder ?? 117,
+    order: startup.promptSectionOrder ?? 117,
     text: usageSectionText(toolNames),
   })
 
@@ -149,7 +269,7 @@ export function apply(ctx: Context, config: Config): void {
   // base bundle of every standard profile, but a minimal composition that
   // omits the command registry keeps the plugin fully functional — the fiber
   // never pends on it and simply never gains the slash command.
-  if (config.slashCommand ?? true) {
+  if (startup.slashCommand ?? true) {
     ctx.inject(['commands'], (commandCtx) => {
       registerAgentTeamsCommand(commandCtx)
     })

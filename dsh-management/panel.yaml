@@ -1,0 +1,115 @@
+contractVersion: 2
+
+sections:
+  - id: member-model
+    title: 成员模型
+    description: 控制之后新建成员使用的默认模型；单次添加成员时显式指定的模型仍然优先
+    fields:
+      - id: member-default-route
+        type: model-select
+        label: 默认成员模型
+        description: 跟随队长时继承队长当前会话；固定模型时从 DSH 当前模型目录选择
+        default: null
+        allowInherit: true
+        inheritLabel: 跟随队长当前会话
+        apply: save
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams
+          key: memberDefaultRoute
+
+  - id: member-runtime
+    title: 成员运行
+    description: 这些设置对之后的成员创建和团队容量检查立即生效
+    fields:
+      - id: member-provider
+        type: select
+        label: 子代理运行方式
+        description: spawn 创建独立可持续成员；fork 从队长上下文分叉成员
+        default: spawn
+        options:
+          - value: spawn
+            label: Spawn
+          - value: fork
+            label: Fork
+        apply: save
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams
+          key: memberProvider
+
+      - id: max-members
+        type: number
+        label: 最大成员数
+        description: 一个团队允许同时存在的非队长成员上限
+        default: 8
+        min: 1
+        max: 64
+        step: 1
+        apply: save
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams
+          key: maxMembers
+
+      - id: member-max-depth
+        type: number
+        label: 成员再委派深度
+        description: 0 禁止成员继续委派；1 允许再向下一层委派一次
+        default: 1
+        min: 0
+        max: 16
+        step: 1
+        apply: save
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams
+          key: memberMaxDepth
+
+  - id: startup
+    title: 启动与存储
+    description: 保存后需要重启 DSH；修改状态目录不会自动迁移旧团队数据
+    fields:
+      - id: slash-command
+        type: switch
+        label: 启用 /agent-teams
+        description: 注册斜杠命令与纯文本激活边界；关闭后仍可用自然语言和工具调用
+        default: true
+        apply: restart-required
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams-startup
+          key: slashCommand
+
+      - id: state-dir
+        type: path
+        label: 团队状态目录
+        description: 相对于队长工作区保存团队状态的目录；旧目录不会自动删除或迁移
+        default: .agent-teams
+        apply: restart-required
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams-startup
+          key: stateDir
+
+  - id: developer
+    title: 开发者选项
+    description: 通常不需要修改；错误顺序可能改变 AgentTeams 说明在系统提示中的相对位置
+    collapsible: true
+    defaultCollapsed: true
+    fields:
+      - id: prompt-section-order
+        type: number
+        label: 系统提示段顺序
+        description: DSH 按数字升序拼接系统提示段；它不控制任务顺序、工具顺序或推理强度
+        default: 117
+        min: 0
+        max: 10000
+        step: 1
+        apply: restart-required
+        binding:
+          kind: dsh-settings
+          namespace: agent-teams-startup
+          key: promptSectionOrder
+
+actions: []

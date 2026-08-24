@@ -509,6 +509,8 @@ function stripLeadingBom(value: string): string {
 const ATOMIC_RENAME_RETRIES = 3
 /** Pause between rename attempts, giving a briefly-locking owner time to finish. */
 const ATOMIC_RENAME_RETRY_DELAY_MS = 50
+/** Wider bounded retry count for directory moves under Windows scheduler jitter. */
+const DIRECTORY_RENAME_RETRIES = 8
 /**
  * Rename error codes worth retrying before the direct-write fallback. On
  * Windows, replacing an existing file whose target is momentarily held open
@@ -740,7 +742,7 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
       await rename(from, to)
       return
     } catch (error: unknown) {
-      if (isRetryableRenameError(error) && attempt < ATOMIC_RENAME_RETRIES) {
+      if (isRetryableRenameError(error) && attempt < DIRECTORY_RENAME_RETRIES) {
         await sleep(ATOMIC_RENAME_RETRY_DELAY_MS)
         continue
       }
