@@ -38,6 +38,8 @@ AgentTeams 原先只有 Cordis entry 配置，没有供 Manager 使用的参数�
 
 干净 checkout 的第一次完整验证还复现了 Windows 目录锁测试的调度抖动：测试进程标称持锁约 140 ms，而旧目录重命名窗口只有约 150 ms，偶尔在最后一次尝试后才释放。归档目录的有界重试窗口扩到约 400 ms；单文件原子替换的次数和直接写入降级策略保持不变。
 
+2026-08-29 将 fork 更新到作者 `v0.1.14`，保留 Manager Settings 与 Windows 归档修复，并发布为 `0.1.14-codex.2`。同时修复两个只在干净 Windows 构建中暴露的问题：`clean-build.mjs` 不再用 POSIX `/lib` 后缀判断 Windows 路径；Captain 归还任务的生命周期验证改为有界等待实际状态收敛，不再依赖固定 20 ms 调度窗口。
+
 ## 回退
 
-回退本提交并重新安装 0.1.13。DSH profile 中新增的两个 Settings namespace 可以保留；旧版本不会消费它们，也不会影响原 `memberModel` 配置。
+回退到 `0.1.14-codex.1`（或作者 `0.1.14`）。DSH profile 中新增的两个 Settings namespace 可以保留；作者原版不会消费它们，也不会影响原 `memberModel` 配置。
