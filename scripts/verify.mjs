@@ -210,7 +210,7 @@ check(
 check(
   'client registers the official locale namespace on both visible slots',
   AGENT_TEAMS_LOCALE_NAMESPACE === 'agentTeams'
-    && clientIndexSource.includes("'conversationEvents', 'slots', 'sessions', 'locale', 'modelDirectories'")
+    && clientIndexSource.includes("'uiConversation', 'slots', 'sessions', 'locale', 'modelDirectories'")
     && clientIndexSource.includes('ctx.locale.register(AGENT_TEAMS_LOCALE_NAMESPACE, { zh, en })')
     && clientIndexSource.match(/locale:\s*AGENT_TEAMS_LOCALE_NAMESPACE/gu)?.length === 2,
 )
@@ -1335,7 +1335,7 @@ function descriptorEvent(label, agentProvider = 'descriptor-provider', agentMode
   return {
     type: 'subagent/descriptor',
     data: {
-      version: 2,
+      version: 3,
       mode: 'continuable',
       provider: 'spawn',
       label,

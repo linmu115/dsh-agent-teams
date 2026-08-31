@@ -1,7 +1,10 @@
 /** Browser plugin for the AgentTeams activity floater and conversation card. */
 
-import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+// Type-only: pulls the Alpha.2 session controller service into Context.
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 // Type-only: pulls the official browser locale service into ClientContext.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Module-loading import: the card registers into the conversation chat-node
@@ -13,6 +16,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 // Official model catalog/directory service. The staged roster reads its
 // provider/model/effort metadata without mutating the captain's own selection.
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
+// Alpha.2 splits the renderer and session standard-props declarations out of Runtime.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import { ActivityPanel } from './ActivityPanel.tsx'
 import { AgentTeamsCard, type AgentTeamsCardInjected } from './AgentTeamsCard.tsx'
 import { agentTeamsCardDefinition } from './agent-teams-card-definition.ts'
@@ -29,7 +35,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required services: conversation nodes, slots, sessions navigation, and locale. */
-export const inject = ['conversationEvents', 'slots', 'sessions', 'locale', 'modelDirectories']
+export const inject = ['uiConversation', 'slots', 'sessions', 'locale', 'modelDirectories']
 
 /** The replayed user message is the canonical transcript entry. */
 function HiddenAgentTeamsCommand(): null {
@@ -41,7 +47,7 @@ function HiddenAgentTeamsCommand(): null {
  * in-conversation team card. The card's activity button re-opens a folded
  * monitor via a window event — the recovery path for an old session.
  */
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: Context): void {
   ctx.effect(
     () => ctx.locale.register(AGENT_TEAMS_LOCALE_NAMESPACE, { zh, en }),
     'agent-teams: dictionaries',
@@ -75,7 +81,7 @@ export function apply(ctx: ClientContext): void {
     key: 'agent-teams',
   }, HiddenAgentTeamsCommand))
 
-  ctx.conversationEvents.register(agentTeamsCardDefinition)
+  ctx.uiConversation.events.register(agentTeamsCardDefinition)
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node',
     key: 'agent-teams',
