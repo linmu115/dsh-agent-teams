@@ -21,7 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Declaration merge only: makes ctx.llm, ctx.subagents and ctx.systemPrompt visible.
 import type {} from '@deepseek-ai/dsh-llm'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import type {} from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type { WorkspaceRegistry } from '@deepseek-ai/dsh-workspace'
@@ -237,12 +237,12 @@ export function installAgentTeamsSettings(ctx: Context, config: Config): Setting
 
   ctx.inject(['settings'], (settingsCtx) => {
     const liveScope = settingsCtx.settings.register(
-      settingsNamespace('agent-teams'),
+      'agent-teams',
       AgentTeamsLiveSettings,
       { base: liveBase, applies: 'live', validate: validateLiveSettings },
     )
     const startupScope = settingsCtx.settings.register(
-      settingsNamespace('agent-teams-startup'),
+      'agent-teams-startup',
       AgentTeamsStartupSettings,
       { base: startupBase, applies: 'restart', validate: validateStartupSettings },
     )
