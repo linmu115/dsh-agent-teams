@@ -41,13 +41,7 @@ import { findTeamByCaptain } from './state.ts'
 import { formatProfilesForPrompt, type TeamProfileConfig } from './profiles.ts'
 import { qualityPlanningPrompt } from './quality-gates.ts'
 
-/**
- * Structural slice of the web server service, compatible with both the
- * published `dsh-host-webserver@0.0.1-rc.1` (`ctx.httpServer` /
- * `HttpServerService`) and the renamed `webServer` / `WebServer` in later
- * builds: the beta transition renames the service without changing the route
- * registration shape.
- */
+/** Structural slice of the DSH 0.1.2-rc.1 web server service. */
 interface WebRouteHost {
   register(route: {
     kind: 'exact' | 'prefix'
@@ -55,11 +49,6 @@ interface WebRouteHost {
     handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
   }): () => void
 }
-
-/** Web-server service key candidates, newest first. */
-const WEB_SERVER_KEYS = ['webServer', 'httpServer'] as const
-/** Workspace registry service key candidates, newest first. */
-const WORKSPACE_KEYS = ['workspaceRegistry', 'workspace'] as const
 
 export const name = 'agent-teams'
 export const inject = ['tools', 'llm', 'subagents', 'systemPrompt', 'agents']
@@ -349,8 +338,8 @@ export function apply(ctx: Context, config: Config): void {
   let webRegistered = false
   const registerWebSurface = (): void => {
     if (webRegistered) return
-    const webServer = (ctx.get(WEB_SERVER_KEYS[0]) ?? ctx.get(WEB_SERVER_KEYS[1])) as WebRouteHost | undefined
-    const workspaceRegistry = (ctx.get(WORKSPACE_KEYS[0]) ?? ctx.get(WORKSPACE_KEYS[1])) as WorkspaceRegistry | undefined
+    const webServer = ctx.get('webServer') as WebRouteHost | undefined
+    const workspaceRegistry = ctx.get('workspaceRegistry') as WorkspaceRegistry | undefined
     if (webServer === undefined || workspaceRegistry === undefined) return
     webRegistered = true
 
@@ -638,8 +627,7 @@ export function apply(ctx: Context, config: Config): void {
 
   registerWebSurface()
   ctx.on('internal/service', (name) => {
-    if (WEB_SERVER_KEYS.includes(name as (typeof WEB_SERVER_KEYS)[number])
-      || WORKSPACE_KEYS.includes(name as (typeof WORKSPACE_KEYS)[number])) {
+    if (name === 'webServer' || name === 'workspaceRegistry') {
       registerWebSurface()
     }
   })

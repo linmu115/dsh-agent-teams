@@ -4,7 +4,7 @@
  *
  * Members are durable continuable subagents of the captain, so a member keeps
  * its conversation across turns and across harness restarts: the captain
- * wakes it with {@link ctx.subagents.followup}, it works through its turn
+ * wakes it with {@link ctx.subagents.sendMessage}, it works through its turn
  * (updating team state through the `agent_teams_*` tools), and becomes idle
  * again. Its final assistant message is not readable programmatically, so the
  * member persists its report into the captain's mailbox and the task records,
@@ -90,9 +90,9 @@ export interface MemberLlmSelectionRequest {
   fallback?: { provider: string; model: string }
 }
 
-/** Process-local bridge between spawn admission and synchronous child setup. */
+/** Process-local bridge between spawn admission and the RC1 creation event. */
 export interface MemberSelectionRuntime {
-  /** Make one selection visible while Harness materializes the fresh child. */
+  /** Make one selection visible while Harness publishes the fresh child. */
   withPending<T>(
     parentSessionId: string,
     label: string,
@@ -297,33 +297,32 @@ export async function resolveMemberLlmSelection(
  */
 export function installMemberSelectionRuntime(ctx: Context, stateDir: string): MemberSelectionRuntime {
   const pending = new Map<string, MemberLlmSelection>()
-  ctx.subagents.registerContinuableSetup((childCtx) => {
-    const child = childCtx.agent
-    if (child === undefined) return () => undefined
-    const suffix = child.session.events.slice(child.session.header.seedLength ?? 0)
+  const installed = new Map<string, () => void>()
+  ctx.on('agent/created', ({ agent: child }) => {
+    const suffix = child.session.ownEvents()
     const descriptor = foldSubagentDescriptor(suffix)
     if (descriptor?.mode !== 'continuable' || !descriptor.label.startsWith(MEMBER_LABEL_PREFIX)) {
-      return () => undefined
+      return
     }
 
     const parentSessionId = child.session.header.parentSession
-    if (parentSessionId === undefined) return () => undefined
+    if (parentSessionId === undefined) return
     const key = pendingSelectionKey(parentSessionId, descriptor.label)
     let selection = pending.get(key)
     if (selection === undefined) {
       const identity = descriptor.label.slice(MEMBER_LABEL_PREFIX.length)
       const separator = identity.indexOf(':')
-      if (separator < 1 || separator === identity.length - 1) return () => undefined
+      if (separator < 1 || separator === identity.length - 1) return
       const teamId = identity.slice(0, separator)
       const memberName = identity.slice(separator + 1)
       const workspace = child.session.header.cwd ?? process.cwd()
       const team = readTeamSync(join(workspace, stateDir), teamId)
-      if (team?.captainSessionId !== parentSessionId) return () => undefined
+      if (team === undefined || team.captainSessionId !== parentSessionId) return
       const durableMember = team.members.find(member => member.name === memberName)
       selection = selectionFromMember(durableMember)
       // An old team record has no provider/reasoning snapshot. Its durable
       // Harness descriptor still restores provider/model, so leave it alone.
-      if (selection === undefined) return () => undefined
+      if (selection === undefined) return
       if (descriptor.agentProvider !== durableMember?.provider || descriptor.agentModel !== durableMember?.model) {
         throw new Error(
           `agent-teams: saved model route for member "${memberName}" does not match its subagent descriptor`,
@@ -332,34 +331,45 @@ export function installMemberSelectionRuntime(ctx: Context, stateDir: string): M
     }
 
     const selectionRef = { current: modelSelection(selection), assembled: undefined as ModelSelection | undefined }
-    const disposeSelection = installModelSelection(childCtx, selectionRef)
+    const disposeSelection = installModelSelection(child.ctx, selectionRef)
     const fallback = selection.fallback
-    if (fallback === undefined) return disposeSelection
     let switched = false
-    const disposeFallback = childCtx.on('agent/request-error', async (payload) => {
-      if (payload.agent.id !== child.id) return undefined
-      const transition = selectFallbackRoute(selectionRef.current ?? { provider: selection.provider, model: selection.model }, fallback, payload.failure.code, switched)
-      if (!transition.retry) return undefined
-      switched = transition.switched
-      selectionRef.current = transition.selection
-      const workspace = child.session.header.cwd ?? process.cwd()
-      const identity = descriptor.label.slice(MEMBER_LABEL_PREFIX.length)
-      const separator = identity.indexOf(':')
-      if (separator > 0) {
-        const teamId = identity.slice(0, separator)
-        const memberName = identity.slice(separator + 1)
-        void updateFallbackState(join(workspace, stateDir), teamId, memberName, fallback, ctx).catch((error: unknown) => {
-          ctx.logger.warn(`agent-teams: failed to persist fallback route: ${String(error)}`)
-        })
-      }
-      ctx.logger.warn(`agent-teams: member ${child.id} switching to fallback ${fallback.provider}/${fallback.model} after ${payload.failure.code}`)
-      return { kind: 'retry' as const }
-    })
-    return () => {
+    const disposeFallback = fallback === undefined
+      ? () => undefined
+      : child.ctx.on('agent/request-error', async (payload) => {
+        if (payload.agent.id !== child.id) return undefined
+        const transition = selectFallbackRoute(selectionRef.current ?? { provider: selection.provider, model: selection.model }, fallback, payload.failure.code, switched)
+        if (!transition.retry) return undefined
+        switched = transition.switched
+        selectionRef.current = transition.selection
+        const workspace = child.session.header.cwd ?? process.cwd()
+        const identity = descriptor.label.slice(MEMBER_LABEL_PREFIX.length)
+        const separator = identity.indexOf(':')
+        if (separator > 0) {
+          const teamId = identity.slice(0, separator)
+          const memberName = identity.slice(separator + 1)
+          void updateFallbackState(join(workspace, stateDir), teamId, memberName, fallback, ctx).catch((error: unknown) => {
+            ctx.logger.warn(`agent-teams: failed to persist fallback route: ${String(error)}`)
+          })
+        }
+        ctx.logger.warn(`agent-teams: member ${child.id} switching to fallback ${fallback.provider}/${fallback.model} after ${payload.failure.code}`)
+        return { kind: 'retry' as const }
+      })
+    const dispose = () => {
       disposeFallback()
       disposeSelection()
     }
+    installed.get(child.id)?.()
+    installed.set(child.id, dispose)
   })
+  ctx.on('agent/disposed', ({ agent }) => {
+    installed.get(agent.id)?.()
+    installed.delete(agent.id)
+  })
+  ctx.effect(() => () => {
+    for (const dispose of installed.values()) dispose()
+    installed.clear()
+  }, 'agent-teams: member model selection cleanup')
 
   return {
     async withPending<T>(
@@ -513,6 +523,9 @@ export async function spawnMember(
         agentOptions: {
           provider: llmSelection.provider,
           model: llmSelection.model,
+          ...llmSelection.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: ReasoningEffortId(llmSelection.reasoningEffort) },
         },
         ...config.maxDepth !== undefined ? { maxDepth: config.maxDepth } : {},
       },
@@ -547,8 +560,7 @@ export async function deliverToMember(
   signal: AbortSignal,
 ): Promise<boolean> {
   try {
-    await ctx.subagents.followup(captain, brandedSessionId(childId), [{ type: 'text', text }], {
-      source: { kind: 'plugin', plugin: 'dsh-agent-teams' },
+    await ctx.subagents.sendMessage(captain, brandedSessionId(childId), [{ type: 'text', text }], {
       signal,
     })
     return true
@@ -578,7 +590,7 @@ export function interruptMember(ctx: Context, captain: Agent, childId: string): 
  *
  * Upstream `interrupt()` deliberately preserves continuable sessions and the
  * upstream seam exposes no targeted forget/retire method. The durable
- * AgentTeams index therefore rejects `followup()` before it can cold-resume a
+ * AgentTeams index therefore rejects `sendMessage()` before it can cold-resume a
  * retired member. Catalog rows deliberately remain discoverable: Harness rc.8
  * uses the direct-child catalog to authorize historical transcript reads and
  * `openSubagent()`, so filtering those rows would make an archived member's
@@ -588,21 +600,21 @@ export function interruptMember(ctx: Context, captain: Agent, childId: string): 
 export function installRetiredMemberGuard(ctx: Context, stateDir: string): void {
   const runtime = ctx.subagents
   ctx.effect(() => {
-    const followup = runtime.followup
-    const guardedFollowup: typeof runtime.followup = async (parent, childId, content, options) => {
-      const retired = await readRetiredMemberIds(join(parent.session.header.cwd ?? process.cwd(), stateDir))
+    const sendMessage = runtime.sendMessage
+    const guardedSendMessage: typeof runtime.sendMessage = async (sender, childId, content, options) => {
+      const retired = await readRetiredMemberIds(join(sender.session.header.cwd ?? process.cwd(), stateDir))
       if (retired.has(childId)) {
         throw new SubagentError(
           `AgentTeams member "${childId}" was retired and cannot be resumed`,
           'NOT_RESUMABLE',
         )
       }
-      return followup.call(runtime, parent, childId, content, options)
+      return sendMessage.call(runtime, sender, childId, content, options)
     }
 
-    runtime.followup = guardedFollowup
+    runtime.sendMessage = guardedSendMessage
     return () => {
-      if (runtime.followup === guardedFollowup) runtime.followup = followup
+      if (runtime.sendMessage === guardedSendMessage) runtime.sendMessage = sendMessage
     }
   }, 'agent-teams: retired member guard')
 }

@@ -37,7 +37,7 @@
 | `ctx.tools` 注册表 | 注册 N 个 `xxx_*` 工具（与 `tool-workflow` 同一注册路径） |
 | `ctx.subagents.startContinuable()` | 创建成员：durable 可续聊子代理 |
 | `ctx.systemPrompt.section()` | 注册使用策略提示段 |
-| `ctx.httpServer.register()` | 提供面板数据路由 `/plugins/xxx/state` |
+| `ctx.webServer.register()` | 提供面板数据路由 `/plugins/xxx/state` |
 | 文件系统 | 状态持久化在 `<workspace>/.xxx/<id>/` |
 ```
 

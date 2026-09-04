@@ -10,16 +10,17 @@
 |---|---|
 | `ctx.tools` 注册表 | 注册 11 个 `agent_teams_*` 工具（与 `tool-workflow` 同一注册路径） |
 | `ctx.subagents.startContinuable()` | 创建成员：durable 可续聊子代理，带成员 persona |
-| `ctx.subagents.followup()` | 唤醒收件成员（消息进入其下一轮次） |
+| `ctx.subagents.sendMessage()` | 唤醒收件成员（消息进入其下一轮次） |
 | 持久化团队成员表 + `ctx.agents` | 前者保存 durable 成员身份，后者提供真实 `running / idle / ready` 活动状态（不依赖易变的子代理目录投影） |
 | `agent/status` | 成员进入 idle 后触发共享任务池自动续领与下一轮唤醒 |
 | `ctx.systemPrompt.section()` | 注册"AgentTeams 使用策略"提示段 |
-| Web server 路由注册 | 活动面板数据路由 `/plugins/dsh-agent-teams/state` + 鲸鱼图片静态服务（`webServer`/`httpServer` 双键兼容，见下） |
+| `ctx.webServer` 路由注册 | 活动面板数据路由 `/plugins/dsh-agent-teams/state` + 鲸鱼图片静态服务 |
 | 文件系统 | 团队状态持久化在 `<workspace>/.agent-teams/<teamId>/` |
 
 数据链路：工具执行 → 磁盘状态（真相源）→ host 快照路由 → 浮层 1s 轮询渲染；会话日志同时写入 `agent-teams/*` 事件（审计/重放/复盘）。
 
-> **内测版本兼容**：npm `latest`（`0.0.1-rc.1`）的服务键仍是 `ctx.httpServer` / `ctx.workspace`，后续 `next`（`rc.2`）重命名为 `ctx.webServer` / `ctx.workspaceRegistry`。插件对两组键都做了探测（新键优先、旧键回退，`internal/service` 事件同时监听两组），两个版本都能注册路由。
+> **RC1 基线**：活动面板只使用 DSH `0.1.2-rc.1` 的
+> `ctx.webServer` 与 `ctx.workspaceRegistry` 服务，不保留旧服务键回退。
 
 ### Web UI
 
