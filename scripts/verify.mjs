@@ -1325,9 +1325,10 @@ await spawnMember(
   new AbortController().signal,
 )
 check(
-  '#20: spawn receives the resolved per-member provider and model',
+  '#20: spawn receives the resolved per-member route and reasoning effort',
   startSpec?.request?.agentOptions?.provider === 'other-provider'
     && startSpec?.request?.agentOptions?.model === 'other-model'
+    && startSpec?.request?.agentOptions?.reasoningEffort === 'low'
     && spawnMemberRecord.id === 'spawned-member',
 )
 
@@ -1347,20 +1348,25 @@ function descriptorEvent(label, agentProvider = 'descriptor-provider', agentMode
 
 function fakeChildContext({ label, parentSessionId, cwd, agentProvider, agentModel }) {
   const listeners = new Map()
-  return {
-    listeners,
-    context: {
-      agent: {
-        session: {
-          header: { parentSession: parentSessionId, cwd, seedLength: 0 },
-          events: [descriptorEvent(label, agentProvider, agentModel)],
-        },
-      },
-      on(name, listener) {
-        listeners.set(name, listener)
-        return () => listeners.delete(name)
+  const context = {
+    on(name, listener) {
+      listeners.set(name, listener)
+      return () => listeners.delete(name)
+    },
+  }
+  const agent = {
+    id: `${parentSessionId}:${label}`,
+    ctx: context,
+    session: {
+      header: { parentSession: parentSessionId, cwd },
+      ownEvents() {
+        return [descriptorEvent(label, agentProvider, agentModel)]
       },
     },
+  }
+  return {
+    listeners,
+    agent,
   }
 }
 
@@ -1375,27 +1381,28 @@ async function routedConfig(child) {
   }))
 }
 
-let setupMemberSelection
+let observeMemberCreated
+let observeMemberDisposed
 const selectionRuntime = installMemberSelectionRuntime({
-  subagents: {
-    registerContinuableSetup: (setup) => {
-      setupMemberSelection = setup
-      return () => undefined
-    },
+  on(name, listener) {
+    if (name === 'agent/created') observeMemberCreated = listener
+    if (name === 'agent/disposed') observeMemberDisposed = listener
+    return () => undefined
   },
+  effect(setup) { return setup() },
+  logger: { warn() {} },
 }, '.agent-teams')
 const freshChild = fakeChildContext({
   label: 'agent-teams:fresh-team:backend',
   parentSessionId: 'captain-session',
   cwd: process.cwd(),
 })
-let disposeFresh
 await selectionRuntime.withPending(
   'captain-session',
   'agent-teams:fresh-team:backend',
   overriddenSelection,
   async () => {
-    disposeFresh = setupMemberSelection(freshChild.context)
+    observeMemberCreated({ agent: freshChild.agent })
   },
 )
 const freshRoute = await routedConfig(freshChild)
@@ -1405,7 +1412,7 @@ check(
     && freshRoute.model === 'other-model'
     && freshRoute.reasoningEffort === 'low',
 )
-disposeFresh()
+observeMemberDisposed({ agent: freshChild.agent })
 
 const restoreWorkspace = await mkdtemp(join(tmpdir(), 'dsh-agent-teams-selection-'))
 try {
@@ -1434,7 +1441,7 @@ try {
     agentProvider: 'cold-provider',
     agentModel: 'cold-model',
   })
-  const disposeCold = setupMemberSelection(coldChild.context)
+  observeMemberCreated({ agent: coldChild.agent })
   const coldRoute = await routedConfig(coldChild)
   check(
     'cold-resumed child restores provider, model, and reasoning from team.json',
@@ -1442,7 +1449,7 @@ try {
       && coldRoute.model === 'cold-model'
       && coldRoute.reasoningEffort === 'high',
   )
-  disposeCold()
+  observeMemberDisposed({ agent: coldChild.agent })
 } finally {
   await rm(restoreWorkspace, { recursive: true, force: true })
 }

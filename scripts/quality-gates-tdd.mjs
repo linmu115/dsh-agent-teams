@@ -976,7 +976,7 @@ console.log('quality-gates TDD — tool-level closed loop')
       },
       async listChildren() { return children },
       async listDescendants() { return children },
-      async followup() { return `message-${childSeq}` },
+      async sendMessage() { return `message-${childSeq}` },
       interrupt() {},
     },
     logger: { debug() {}, warn() {} },

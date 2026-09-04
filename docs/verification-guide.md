@@ -165,7 +165,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3081/
 
 - 组合了 web-app 的自定义 profile 可直接传 app-level `--host/--port`；也可用 `--patch` 固化 webserver config。
 - **版本对齐坑**：npx 默认 CLI 是 rc.2（next 通道），`dsh plugin add` 默认装 latest（rc.1）——混装时 rc.2 独有的 `ui-plugin-config` 等待 rc.2 才提供的 `settingsScope`，页面报 "Failed to load plugins"。固定 CLI 为 `@0.0.1-rc.1`（与 latest bundle 对齐），或全部升级 `next`。
-- 内测 registry 的 `latest`（rc.1）与 `next`（rc.2）服务键不同（`httpServer` vs `webServer`）——插件双键兼容，两个通道都要抽验。
+- RC1-only 构建只验证 `webServer` 与 `workspaceRegistry` 正式服务键；不要为已废弃的预览版键名保留双键探测。
 - client HMR 需要 watcher 持续重建 `lib/client.js`；否则 `pnpm build` 后刷新页面。host/package manifest/profile bundles 改动才重启。
 - apps/web shell/普通 packages 不走 client-plugin HMR；不要启动独立 Vite server 替代 DSH GUI。
 

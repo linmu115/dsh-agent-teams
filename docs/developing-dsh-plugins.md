@@ -154,7 +154,9 @@ export function apply(ctx: Context, config: Config): void {
 }
 ```
 
-> **内测版本兼容（webServer/httpServer）**：npm `latest`（`0.0.1-rc.1`）的 Web 服务键是 `ctx.httpServer`（`HttpServerService`），后续 `next`（`rc.2`）重命名为 `ctx.webServer`（`WebServer`）；工作区键同理 `workspace` → `workspaceRegistry`。过渡期不要硬绑定单一键名：`ctx.get('webServer') ?? ctx.get('httpServer')`（新键优先、旧键回退），`internal/service` 事件同时监听两组键再补注册。路由注册形状（`register({kind, path, handler})` 返回 disposer）两个版本一致。
+> **RC1 服务键**：DSH `0.1.2-rc.1` 使用 `ctx.webServer` 与
+> `ctx.workspaceRegistry`。RC1-only 插件直接依赖这两个正式服务键，不探测
+> 已废弃的预览版键名。
 
 - `inject` 声明依赖的服务；`ctx.<name>` 只有在 inject 里声明的服务才可用。
 - `Config` 用 `@deepseek-ai/schemastery` 的 `z.object` 描述，Loader 负责默认值。
@@ -211,8 +213,7 @@ const provider = ctx.subagents.getProvider(config.memberProvider)   // ← 在 s
 ```ts
 import { readFile } from 'node:fs/promises'
 
-// 过渡期双键：新键优先、旧键回退（见 2.1 版本兼容说明）
-const web = (ctx.get('webServer') ?? ctx.get('httpServer')) as WebRouteHost
+const web = ctx.get('webServer') as WebRouteHost
 ctx.effect(() => web.register({
   kind: 'exact',                       // 或 'prefix'
   path: '/plugins/my-plugin/state',
